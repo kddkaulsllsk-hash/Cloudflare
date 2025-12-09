@@ -3449,15 +3449,19 @@ async function ProtocolOverWSHandler(request, config, env, ctx) {
             }
           }
 
-          // IP Limit Check
-          if (user.ip_limit && user.ip_limit > -1) {
-            const ipCount = await env.DB.prepare("SELECT COUNT(DISTINCT ip) as count FROM user_ips WHERE uuid = ?").bind(userUUID).first('count');
-            if (ipCount >= user.ip_limit) {
-              controller.error(new Error('IP limit exceeded'));
-              return;
+          // IP Limit Check - only if DB is available
+          if (env.DB && user.ip_limit && user.ip_limit > -1) {
+            try {
+              const ipCount = await env.DB.prepare("SELECT COUNT(DISTINCT ip) as count FROM user_ips WHERE uuid = ?").bind(userUUID).first('count');
+              if (ipCount >= user.ip_limit) {
+                controller.error(new Error('IP limit exceeded'));
+                return;
+              }
+              // Update current IP
+              await env.DB.prepare("INSERT OR REPLACE INTO user_ips (uuid, ip, last_seen) VALUES (?, ?, CURRENT_TIMESTAMP)").bind(userUUID, clientIp).run();
+            } catch (e) {
+              console.error('IP limit check failed:', e);
             }
-            // Update current IP
-            await env.DB.prepare("INSERT OR REPLACE INTO user_ips (uuid, ip, last_seen) VALUES (?, ?, CURRENT_TIMESTAMP)").bind(userUUID, clientIp).run();
           }
 
           address = addressRemote;
@@ -4110,12 +4114,6 @@ export default {
 
     const upgradeHeader = request.headers.get('Upgrade');
     if (upgradeHeader?.toLowerCase() === 'websocket') {
-      if (!env.DB) {
-        const headers = new Headers();
-        addSecurityHeaders(headers, null, {});
-        return new Response('Service not configured properly', { status: 503, headers });
-      }
-      
       // Domain Fronting: Set random Host header from HOST_HEADERS
       const hostHeaders = env.HOST_HEADERS ? env.HOST_HEADERS.split(',').map(h => h.trim()) : ['speed.cloudflare.com'];
       const evasionHost = pick(hostHeaders);
