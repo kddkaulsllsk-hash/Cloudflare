@@ -11,13 +11,13 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20230518.0",
-    "wrangler": "^3.1.0"
+    "@cloudflare/workers-types": "^4.20251210.0",
+    "wrangler": "^3.114.15"
   },
   "dependencies": {
-    "dns-packet": "^5.6.0",
+    "dns-packet": "^5.6.1",
     "ip-cidr": "^3.1.0",
     "ip-range-check": "^0.2.0",
-    "ipaddr.js": "^2.0.1"
+    "ipaddr.js": "^2.3.0"
   }
 }
