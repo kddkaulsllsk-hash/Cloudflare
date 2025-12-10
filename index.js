@@ -456,16 +456,11 @@ async function hashSHA256(str) {
 }
 
 async function checkRateLimit(db, key, limit, ttl) {
-  try {
-    const countStr = await kvGet(db, key);
-    const count = parseInt(countStr, 10) || 0;
-    if (count >= limit) return true;
-    await kvPut(db, key, (count + 1).toString(), { expirationTtl: ttl });
-    return false;
-  } catch (e) {
-    console.error(`Rate limit check failed for ${key}: ${e}`);
-    return false; // Fail open on rate limit errors
-  }
+  const countStr = await kvGet(db, key);
+  const count = parseInt(countStr, 10) || 0;
+  if (count >= limit) return true;
+  await kvPut(db, key, (count + 1).toString(), { expirationTtl: ttl });
+  return false;
 }
 
 // ============================================================================
@@ -567,7 +562,7 @@ async function handleIpSubscription(core, userID, hostName) {
   mainDomains.forEach((domain, i) => {
     links.push(buildLink({ core, proto: 'tls', userID, hostName, address: domain, port: pick(httpsPorts), tag: `D${i+1}` }));
     if (!isPagesDeployment) {
-      links.push(buildLink({ core, proto: 'tcp', userID, hostName, address: domain, port: pick(httpPorts), tag: `D${i+1}` ));
+      links.push(buildLink({ core, proto: 'tcp', userID, hostName, address: domain, port: pick(httpPorts), tag: `D${i+1}` }));
     }
   });
 
@@ -863,10 +858,10 @@ const adminPanelHTML = [
   '            const getCsrfToken = () => document.cookie.split(\'; \').find(row => row.startsWith(\'csrf_token=\'))?.split(\'=\')[1] || \'\';',
   '',
   '            const api = {',
-  '                get: (endpoint) => fetch(API_BASE + endpoint, { credentials: \'include\' }).then(handleResponse).catch(err => { console.error(\'API GET error:\', err); return { error: err.message }; }),',
-  '                post: (endpoint, body) => fetch(API_BASE + endpoint, { method: \'POST\', credentials: \'include\', headers: {\'Content-Type\': \'application/json\', \'X-CSRF-Token\': getCsrfToken()}, body: JSON.stringify(body) }).then(handleResponse).catch(err => { console.error(\'API POST error:\', err); return { error: err.message }; }),',
-  '                put: (endpoint, body) => fetch(API_BASE + endpoint, { method: \'PUT\', credentials: \'include\', headers: {\'Content-Type\': \'application/json\', \'X-CSRF-Token\': getCsrfToken()}, body: JSON.stringify(body) }).then(handleResponse).catch(err => { console.error(\'API PUT error:\', err); return { error: err.message }; }),',
-  '                delete: (endpoint) => fetch(API_BASE + endpoint, { method: \'DELETE\', credentials: \'include\', headers: {\'X-CSRF-Token\': getCsrfToken()} }).then(handleResponse).catch(err => { console.error(\'API DELETE error:\', err); return { error: err.message }; }),',
+  '                get: (endpoint) => fetch(API_BASE + endpoint, { credentials: \'include\' }).then(handleResponse),',
+  '                post: (endpoint, body) => fetch(API_BASE + endpoint, { method: \'POST\', credentials: \'include\', headers: {\'Content-Type\': \'application/json\', \'X-CSRF-Token\': getCsrfToken()}, body: JSON.stringify(body) }).then(handleResponse),',
+  '                put: (endpoint, body) => fetch(API_BASE + endpoint, { method: \'PUT\', credentials: \'include\', headers: {\'Content-Type\': \'application/json\', \'X-CSRF-Token\': getCsrfToken()}, body: JSON.stringify(body) }).then(handleResponse),',
+  '                delete: (endpoint) => fetch(API_BASE + endpoint, { method: \'DELETE\', credentials: \'include\', headers: {\'X-CSRF-Token\': getCsrfToken()} }).then(handleResponse),',
   '            };',
   '',
   '            async function handleResponse(response) {',
@@ -1032,7 +1027,6 @@ const adminPanelHTML = [
   '            async function fetchStats() {',
   '              try {',
   '                const stats = await api.get(\'/stats\');',
-  '                if (stats.error) throw new Error(stats.error);',
   '                document.getElementById(\'total-users\').textContent = stats.total_users;',
   '                document.getElementById(\'active-users\').textContent = stats.active_users;',
   '                document.getElementById(\'expired-users\').textContent = stats.expired_users;',
@@ -1048,7 +1042,7 @@ const adminPanelHTML = [
   '                    usersToRender.forEach(user => {',
   '                        const expiry = formatExpiryDateTime(user.expiration_date, user.expiration_time);',
   '                        const row = document.createElement(\'tr\');',
-  '                        row.innerHTML = `',
+  '                        row.innerHTML = \`',
   '                            <td><input type="checkbox" class="user-checkbox checkbox" data-uuid="\${user.uuid}"></td>',
   '                            <td>',
   '                                <div class="uuid-cell">',
@@ -1081,7 +1075,7 @@ const adminPanelHTML = [
   '                                    <button class="btn btn-danger btn-delete" data-uuid="\${user.uuid}">Delete</button>',
   '                                </div>',
   '                            </td>',
-  '                        `;',
+  '                        \`;',
   '                        userList.appendChild(row);',
   '                    });',
   '                }',
@@ -1090,7 +1084,6 @@ const adminPanelHTML = [
   '            async function fetchAndRenderUsers() {',
   '                try {',
   '                    allUsers = await api.get(\'/users\');',
-  '                    if (allUsers.error) throw new Error(allUsers.error);',
   '                    allUsers.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));',
   '                    renderUsers();',
   '                    fetchStats();',
@@ -1148,95 +1141,95 @@ const adminPanelHTML = [
   '            }',
   '',
   '            async function handleDeleteUser(uuid) {',
-  '                if (confirm('Delete user ' + uuid + '?')) {
-                    try {
-                        await api.delete('/users/' + uuid);
-                        showToast('User deleted successfully!');
-                        await fetchAndRenderUsers();
-                    } catch (error) { showToast(error.message, true); }
-                }
-            },
-            
-            async function handleBulkDelete() {
-                const selected = Array.from(document.querySelectorAll('.user-checkbox:checked')).map(cb => cb.dataset.uuid);
-                if (selected.length === 0) return showToast('No users selected.', true);
-                if (confirm('Delete ' + selected.length + ' selected users?')) {
-                    try {
-                        await api.post('/users/bulk-delete', { uuids: selected });
-                        showToast('Selected users deleted successfully!');
-                        await fetchAndRenderUsers();
-                    } catch (error) { showToast(error.message, true); }
-                }
-            },
-            
-            function openEditModal(uuid) {
-                const user = allUsers.find(u => u.uuid === uuid);
-                if (!user) return showToast('User not found.', true);
-                
-                const { localDate, localTime } = utcToLocal(user.expiration_date, user.expiration_time);
-                
-                document.getElementById('editUuid').value = user.uuid;
-                document.getElementById('editExpiryDate').value = localDate;
-                document.getElementById('editExpiryTime').value = localTime;
-                document.getElementById('editNotes').value = user.notes || '';
-                
-                const editDataLimit = document.getElementById('editDataLimit');
-                const editDataUnit = document.getElementById('editDataUnit');
-                if (user.traffic_limit === null || user.traffic_limit === 0) {
-                  editDataUnit.value = 'unlimited';
-                  editDataLimit.value = '';
-                } else {
-                  let bytes = user.traffic_limit;
-                  let unit = 'KB';
-                  let value = bytes / 1024;
-                  
-                  if (value >= 1024) { value = value / 1024; unit = 'MB'; }
-                  if (value >= 1024) { value = value / 1024; unit = 'GB'; }
-                  if (value >= 1024) { value = value / 1024; unit = 'TB'; }
-                  
-                  editDataLimit.value = value.toFixed(2);
-                  editDataUnit.value = unit;
-                }
-                const editIpLimit = document.getElementById('editIpLimit');
-                editIpLimit.value = user.ip_limit !== null ? user.ip_limit : -1;
-                document.getElementById('resetTraffic').checked = false;
-                
-                editModal.classList.add('show');
-            },
-            
-            function closeEditModal() { editModal.classList.remove('show'); },
-            
-            async function handleEditUser(e) {
-                e.preventDefault();
-                const localDate = document.getElementById('editExpiryDate').value;
-                const localTime = document.getElementById('editExpiryTime').value;
-                
-                const { utcDate, utcTime } = localToUTC(localDate, localTime);
-                if (!utcDate || !utcTime) return showToast('Invalid date or time entered.', true);
-                
-                const dataLimit = document.getElementById('editDataLimit').value;
-                const dataUnit = document.getElementById('editDataUnit').value;
-                let trafficLimit = null;
-                `,
-  '                if (dataUnit !== 'unlimited' && dataLimit) {',
+  '                if (confirm(\'Delete user \' + uuid + \'?\')) {',
+  '                    try {',
+  '                        await api.delete(\'/users/\' + uuid);',
+  '                        showToast(\'User deleted successfully!\');',
+  '                        await fetchAndRenderUsers();',
+  '                    } catch (error) { showToast(error.message, true); }',
+  '                }',
+  '            }',
+  '',
+  '            async function handleBulkDelete() {',
+  '                const selected = Array.from(document.querySelectorAll(\'.user-checkbox:checked\')).map(cb => cb.dataset.uuid);',
+  '                if (selected.length === 0) return showToast(\'No users selected.\', true);',
+  '                if (confirm(\'Delete \' + selected.length + \' selected users?\')) {',
+  '                    try {',
+  '                        await api.post(\'/users/bulk-delete\', { uuids: selected });',
+  '                        showToast(\'Selected users deleted successfully!\');',
+  '                        await fetchAndRenderUsers();',
+  '                    } catch (error) { showToast(error.message, true); }',
+  '                }',
+  '            }',
+  '',
+  '            function openEditModal(uuid) {',
+  '                const user = allUsers.find(u => u.uuid === uuid);',
+  '                if (!user) return showToast(\'User not found.\', true);',
+  '',
+  '                const { localDate, localTime } = utcToLocal(user.expiration_date, user.expiration_time);',
+  '',
+  '                document.getElementById(\'editUuid\').value = user.uuid;',
+  '                document.getElementById(\'editExpiryDate\').value = localDate;',
+  '                document.getElementById(\'editExpiryTime\').value = localTime;',
+  '                document.getElementById(\'editNotes\').value = user.notes || \'\';',
+  '',
+  '                const editDataLimit = document.getElementById(\'editDataLimit\');',
+  '                const editDataUnit = document.getElementById(\'editDataUnit\');',
+  '                if (user.traffic_limit === null || user.traffic_limit === 0) {',
+  '                  editDataUnit.value = \'unlimited\';',
+  '                  editDataLimit.value = \'\';',
+  '                } else {',
+  '                  let bytes = user.traffic_limit;',
+  '                  let unit = \'KB\';',
+  '                  let value = bytes / 1024;',
+  '                  ',
+  '                  if (value >= 1024) { value = value / 1024; unit = \'MB\'; }',
+  '                  if (value >= 1024) { value = value / 1024; unit = \'GB\'; }',
+  '                  if (value >= 1024) { value = value / 1024; unit = \'TB\'; }',
+  '                  ',
+  '                  editDataLimit.value = value.toFixed(2);',
+  '                  editDataUnit.value = unit;',
+  '                }',
+  '                const editIpLimit = document.getElementById(\'editIpLimit\');',
+  '                editIpLimit.value = user.ip_limit !== null ? user.ip_limit : -1;',
+  '                document.getElementById(\'resetTraffic\').checked = false;',
+  '',
+  '                editModal.classList.add(\'show\');',
+  '            }',
+  '',
+  '            function closeEditModal() { editModal.classList.remove(\'show\'); }',
+  '',
+  '            async function handleEditUser(e) {',
+  '                e.preventDefault();',
+  '                const localDate = document.getElementById(\'editExpiryDate\').value;',
+  '                const localTime = document.getElementById(\'editExpiryTime\').value;',
+  '',
+  '                const { utcDate, utcTime } = localToUTC(localDate, localTime);',
+  '                if (!utcDate || !utcTime) return showToast(\'Invalid date or time entered.\', true);',
+  '',
+  '                const dataLimit = document.getElementById(\'editDataLimit\').value;',
+  '                const dataUnit = document.getElementById(\'editDataUnit\').value;',
+  '                let trafficLimit = null;',
+  '                ',
+  '                if (dataUnit !== \'unlimited\' && dataLimit) {',
   '                    const multipliers = { KB: 1024, MB: 1024**2, GB: 1024**3, TB: 1024**4 };',
   '                    trafficLimit = parseFloat(dataLimit) * (multipliers[dataUnit] || 1);',
   '                }',
   '',
-  '                const ipLimit = parseInt(document.getElementById('editIpLimit').value) || -1;',
+  '                const ipLimit = parseInt(document.getElementById(\'editIpLimit\').value) || -1;',
   '',
   '                const updatedData = {',
   '                    exp_date: utcDate,',
   '                    exp_time: utcTime,',
-  '                    notes: document.getElementById('editNotes').value,',
+  '                    notes: document.getElementById(\'editNotes\').value,',
   '                    traffic_limit: trafficLimit,',
   '                    ip_limit: ipLimit,',
-  '                    reset_traffic: document.getElementById('resetTraffic').checked',
+  '                    reset_traffic: document.getElementById(\'resetTraffic\').checked',
   '                };',
   '',
   '                try {',
-  '                    await api.put('/users/' + document.getElementById('editUuid').value, updatedData);',
-  '                    showToast('User updated successfully!');',
+  '                    await api.put(\'/users/\' + document.getElementById(\'editUuid\').value, updatedData);',
+  '                    showToast(\'User updated successfully!\');',
   '                    closeEditModal();',
   '                    await fetchAndRenderUsers();',
   '                } catch (error) { showToast(error.message, true); }',
@@ -1244,8 +1237,8 @@ const adminPanelHTML = [
   '',
   '            async function handleLogout() {',
   '                try {',
-  '                    await api.post('/logout', {});',
-  '                    showToast('Logged out successfully!');',
+  '                    await api.post(\'/logout\', {});',
+  '                    showToast(\'Logged out successfully!\');',
   '                    setTimeout(() => window.location.reload(), 1000);',
   '                } catch (error) { showToast(error.message, true); }',
   '            }',
@@ -1261,8 +1254,8 @@ const adminPanelHTML = [
   '                const minutes = pad(now.getMinutes());',
   '                const seconds = pad(now.getSeconds());',
   '                ',
-  '                document.getElementById('expiryDate').value = year + '-' + month + '-' + day;',
-  '                document.getElementById('expiryTime').value = hours + ':' + minutes + ':' + seconds;',
+  '                document.getElementById(\'expiryDate\').value = year + \'-\' + month + \'-\' + day;',
+  '                document.getElementById(\'expiryTime\').value = hours + \':\' + minutes + \':\' + seconds;',
   '            }',
   '',
   '            function filterUsers() {',
@@ -1276,41 +1269,41 @@ const adminPanelHTML = [
   '',
   '            async function handleHealthCheck() {',
   '                try {',
-  '                    const result = await api.post('/health-check', {});',
-  '                    showToast('Health check completed successfully!', false);',
+  '                    const result = await api.post(\'/health-check\', {});',
+  '                    showToast(\'Health check completed successfully!\', false);',
   '                    await fetchAndRenderUsers(); // Refresh after check',
   '                } catch (error) { showToast(error.message, true); }',
   '            }',
   '',
-  '            generateUUIDBtn.addEventListener('click', () => uuidInput.value = crypto.randomUUID());',
-  '            createUserForm.addEventListener('submit', handleCreateUser);',
-  '            editUserForm.addEventListener('submit', handleEditUser);',
-  '            editModal.addEventListener('click', (e) => { if (e.target === editModal) closeEditModal(); });',
-  '            document.getElementById('modalCloseBtn').addEventListener('click', closeEditModal);',
-  '            document.getElementById('modalCancelBtn').addEventListener('click', closeEditModal);',
+  '            generateUUIDBtn.addEventListener(\'click\', () => uuidInput.value = crypto.randomUUID());',
+  '            createUserForm.addEventListener(\'submit\', handleCreateUser);',
+  '            editUserForm.addEventListener(\'submit\', handleEditUser);',
+  '            editModal.addEventListener(\'click\', (e) => { if (e.target === editModal) closeEditModal(); });',
+  '            document.getElementById(\'modalCloseBtn\').addEventListener(\'click\', closeEditModal);',
+  '            document.getElementById(\'modalCancelBtn\').addEventListener(\'click\', closeEditModal);',
   '            ',
-  '            userList.addEventListener('click', (e) => {',
-  '                const copyBtn = e.target.closest('.btn-copy-uuid');',
+  '            userList.addEventListener(\'click\', (e) => {',
+  '                const copyBtn = e.target.closest(\'.btn-copy-uuid\');',
   '                if (copyBtn) {',
   '                    const uuid = copyBtn.dataset.uuid;',
   '                    copyUUID(uuid, copyBtn);',
   '                    return;',
   '                }',
   '',
-  '                const actionBtn = e.target.closest('button');',
+  '                const actionBtn = e.target.closest(\'button\');',
   '                if (!actionBtn) return;',
   '                const uuid = actionBtn.dataset.uuid;',
-  '                if (actionBtn.classList.contains('btn-edit')) openEditModal(uuid);',
-  '                else if (actionBtn.classList.contains('btn-delete')) handleDeleteUser(uuid);',
+  '                if (actionBtn.classList.contains(\'btn-edit\')) openEditModal(uuid);',
+  '                else if (actionBtn.classList.contains(\'btn-delete\')) handleDeleteUser(uuid);',
   '            });',
   '            ',
-  '            searchInput.addEventListener('input', filterUsers);',
-  '            selectAll.addEventListener('change', (e) => {',
-  '              document.querySelectorAll('.user-checkbox').forEach(cb => cb.checked = e.target.checked);',
+  '            searchInput.addEventListener(\'input\', filterUsers);',
+  '            selectAll.addEventListener(\'change\', (e) => {',
+  '              document.querySelectorAll(\'.user-checkbox\').forEach(cb => cb.checked = e.target.checked);',
   '            });',
-  '            deleteSelected.addEventListener('click', handleBulkDelete);',
-  '            logoutBtn.addEventListener('click', handleLogout);',
-  '            healthCheckBtn.addEventListener('click', handleHealthCheck);',
+  '            deleteSelected.addEventListener(\'click\', handleBulkDelete);',
+  '            logoutBtn.addEventListener(\'click\', handleLogout);',
+  '            healthCheckBtn.addEventListener(\'click\', handleHealthCheck);',
   '',
   '            setDefaultExpiry();',
   '            uuidInput.value = crypto.randomUUID();',
@@ -1320,8 +1313,7 @@ const adminPanelHTML = [
   '    </script>',
   '</body>',
   '</html>'
-].join('
-');
+].join('\n');
 
 // ============================================================================
 // ADMIN API HANDLERS
@@ -2244,38 +2236,38 @@ async function handleUserPanel(request, userID, hostName, proxyAddress, userData
       function QRPolynomial(num, shift) {
         if (num.length === undefined) throw new Error("QRPolynomial: invalid num");
         let offset = 0;
-        return (
-          byteToHex[num[offset]] + byteToHex[num[offset + 1]] + byteToHex[num[offset + 2]] + byteToHex[num[offset + 3]] + '-' +
-          byteToHex[num[offset + 4]] + byteToHex[num[offset + 5]] + '-' +
-          byteToHex[num[offset + 6]] + byteToHex[num[offset + 7]] + '-' +
-          byteToHex[num[offset + 8]] + byteToHex[num[offset + 9]] + '-' +
-          byteToHex[num[offset + 10]] + byteToHex[num[offset + 11]] + byteToHex[num[offset + 12]] + 
-          byteToHex[num[offset + 13]] + byteToHex[num[offset + 14]] + byteToHex[num[offset + 15]]
-        ).toLowerCase();
+        while (offset < num.length && num[offset] === 0) offset++;
+        this.num = new Array(num.length - offset + shift);
+        for (let i = 0; i < num.length - offset; i++) {
+          this.num[i] = num[i + offset];
+        }
       }
       
-      function stringify(arr, offset = 0) {
-        const uuid = unsafeStringify(arr, offset);
-        if (!isValidUUID(uuid)) throw new TypeError('Stringified UUID is invalid');
-        return uuid;
-      }
-
-      function unsafeStringify(arr, offset = 0) {
-        return (
-          byteToHex[arr[offset]] + byteToHex[arr[offset + 1]] + byteToHex[arr[offset + 2]] + byteToHex[arr[offset + 3]] + '-' +
-          byteToHex[arr[offset + 4]] + byteToHex[arr[offset + 5]] + '-' +
-          byteToHex[arr[offset + 6]] + byteToHex[arr[offset + 7]] + '-' +
-          byteToHex[arr[offset + 8]] + byteToHex[arr[offset + 9]] + '-' +
-          byteToHex[arr[offset + 10]] + byteToHex[arr[offset + 11]] + byteToHex[arr[offset + 12]] + 
-          byteToHex[arr[offset + 13]] + byteToHex[arr[offset + 14]] + byteToHex[arr[offset + 15]]
-        ).toLowerCase();
-      }
-      
-      function isValidUUID(uuid) {
-        if (typeof uuid !== 'string') return false;
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-        return uuidRegex.test(uuid);
-      }
+      QRPolynomial.prototype = {
+        get: function(index) { return this.num[index]; },
+        getLength: function() { return this.num.length; },
+        multiply: function(e) {
+          const num = new Array(this.getLength() + e.getLength() - 1);
+          for (let i = 0; i < this.getLength(); i++) {
+            for (let j = 0; j < e.getLength(); j++) {
+              num[i + j] ^= QRMath.gexp(QRMath.glog(this.get(i)) + QRMath.glog(e.get(j)));
+            }
+          }
+          return new QRPolynomial(num, 0);
+        },
+        mod: function(e) {
+          if (this.getLength() - e.getLength() < 0) return this;
+          const ratio = QRMath.glog(this.get(0)) - QRMath.glog(e.get(0));
+          const num = new Array(this.getLength());
+          for (let i = 0; i < this.getLength(); i++) {
+            num[i] = this.get(i);
+          }
+          for (let i = 0; i < e.getLength(); i++) {
+            num[i] ^= QRMath.gexp(QRMath.glog(e.get(i)) + ratio);
+          }
+          return new QRPolynomial(num, 0).mod(e);
+        }
+      };
       
       function QRCode(typeNumber, errorCorrectLevel) {
         this.typeNumber = typeNumber;
@@ -2348,19 +2340,6 @@ async function handleUserPanel(request, userID, hostName, proxyAddress, userData
             }
           }
         },
-        setupTypeInfo: function(test, maskPattern) {
-          const data = (this.errorCorrectLevel << 3) | maskPattern;
-          let bits = data << 10;
-          for (let i = 0; i < 10; i++) {
-            if ((bits >>> (9 - i)) & 1) bits ^= 1335 << (9 - i);
-          }
-          const mod = bits ^ 21522;
-          for (let i = 0; i < 15; i++) {
-            const modIndex = i < 8 ? i : i + 1;
-            this.modules[i][6] = (mod >> modIndex) & 1;
-            this.modules[6][i] = (mod >> (modIndex + 8)) & 1;
-          }
-        },
         setupTypeNumber: function(test) {
           const bits = this.typeNumber << 12;
           let mod = bits;
@@ -2369,10 +2348,37 @@ async function handleUserPanel(request, userID, hostName, proxyAddress, userData
           }
           const data = (bits | mod) ^ 21522;
           for (let i = 0; i < 18; i++) {
-            const modIndex = i < 6 ? i : i + 1;
-            this.modules[i][8] = (data >> modIndex) & 1;
-            this.modules[8][i] = (data >> (modIndex + 8)) & 1;
+            this.modules[Math.floor(i / 3)][i % 3 + this.moduleCount - 8 - 3] = !test && ((data >>> i) & 1) === 1;
           }
+        },
+        setupTypeInfo: function(test, maskPattern) {
+          const data = (this.errorCorrectLevel << 3) | maskPattern;
+          let bits = data << 10;
+          for (let i = 0; i < 10; i++) {
+            if ((bits >>> (9 - i)) & 1) bits ^= 1335 << (9 - i);
+          }
+          bits = ((data << 10) | bits) ^ 21522;
+          for (let i = 0; i < 15; i++) {
+            const mod = !test && ((bits >>> i) & 1) === 1;
+            if (i < 6) {
+              this.modules[i][8] = mod;
+            } else if (i < 8) {
+              this.modules[i + 1][8] = mod;
+            } else {
+              this.modules[this.moduleCount - 15 + i][8] = mod;
+            }
+          }
+          for (let i = 0; i < 15; i++) {
+            const mod = !test && ((bits >>> i) & 1) === 1;
+            if (i < 8) {
+              this.modules[8][this.moduleCount - i - 1] = mod;
+            } else if (i < 9) {
+              this.modules[8][15 - i] = mod;
+            } else {
+              this.modules[8][14 - i] = mod;
+            }
+          }
+          this.modules[this.moduleCount - 8][8] = !test;
         },
         mapData: function(data, maskPattern) {
           let inc = -1, row = this.moduleCount - 1, bitIndex = 7, byteIndex = 0;
@@ -2535,7 +2541,7 @@ async function handleUserPanel(request, userID, hostName, proxyAddress, userData
       try {
         await navigator.clipboard.writeText(text);
         const originalText = button.innerHTML;
-        button.innerHTML = '✓ Copied';
+        button.innerHTML = '✓ Copied!';
         button.disabled = true;
         setTimeout(() => {
           button.innerHTML = originalText;
@@ -2556,7 +2562,7 @@ async function handleUserPanel(request, userID, hostName, proxyAddress, userData
             document.body.removeChild(textArea);
             
             const originalText = button.innerHTML;
-            button.innerHTML = '✓ Copied';
+            button.innerHTML = '✓ Copied!';
             button.disabled = true;
             setTimeout(() => {
                 button.innerHTML = originalText;
@@ -2602,36 +2608,60 @@ async function handleUserPanel(request, userID, hostName, proxyAddress, userData
         const timeoutId = setTimeout(() => controller.abort(), timeout);
         
         try {
-          const response = await fetch(url, { headers: { 'accept': 'application/dns-json' } });
-          if (response.ok) {
-            const data = await response.json();
-            return data;
-          }
-        } catch (e) {
-          // Silent fail
-        } finally {
+          const response = await fetch(url, { 
+            signal: controller.signal,
+            cache: 'no-store',
+            mode: 'cors'
+          });
           clearTimeout(timeoutId);
+          
+          if (!response.ok) throw new Error(\`HTTP \${response.status}\`);
+          return response;
+        } catch (error) {
+          clearTimeout(timeoutId);
+          throw error;
         }
-        return null;
       }
 
       // CLIENT IP DETECTION
       const clientIPAPIs = [
-        { url: 'https://api.ipify.org?format=json', parse: data => data.ip },
-        { url: 'https://ipapi.co/json/', parse: data => data.ip },
-        { url: 'https://ip-api.com/json/?fields=ip', parse: data => data.query },
-        { url: 'https://ipwho.is/', parse: data => data.ip },
-        { url: 'https://freegeoip.app/json/', parse: data => data.ip },
-        { url: 'https://ipapi.is/', parse: data => data.ip },
-        { url: 'https://freeipapi.com/api/json/', parse: data => data.ipAddress }
+        { 
+          url: 'https://api.ipify.org?format=json', 
+          parse: async (r) => (await r.json()).ip
+        },
+        {
+          url: 'https://ipapi.co/json/',
+          parse: async (r) => (await r.json()).ip
+        },
+        {
+          url: 'https://ifconfig.me/ip',
+          parse: async (r) => (await r.text()).trim()
+        },
+        {
+          url: 'https://icanhazip.com',
+          parse: async (r) => (await r.text()).trim()
+        },
+        {
+          url: 'https://api.my-ip.io/v2/ip.json',
+          parse: async (r) => (await r.json()).ip
+        },
+        {
+          url: 'https://checkip.amazonaws.com',
+          parse: async (r) => (await r.text()).trim()
+        },
+        {
+          url: 'https://wtfismyip.com/text',
+          parse: async (r) => (await r.text()).trim()
+        }
       ];
 
       let clientIP = null;
       for (const api of clientIPAPIs) {
         try {
-          const data = await fetchWithTimeout(api.url);
-          if (data && data.ip) {
-            clientIP = data.ip;
+          const response = await fetchWithTimeout(api.url);
+          clientIP = await api.parse(response);
+          if (clientIP && clientIP.trim() && /^[0-9.:a-fA-F]+$/.test(clientIP.trim())) {
+            clientIP = clientIP.trim();
             displayElement('client-ip', clientIP, true);
             console.log(\`✓ Client IP detected: \${clientIP} via \${api.url}\`);
             break;
@@ -2649,30 +2679,51 @@ async function handleUserPanel(request, userID, hostName, proxyAddress, userData
       const clientGeoAPIs = [
         {
           url: clientIP ? \`https://ipapi.co/\${clientIP}/json/\` : 'https://ipapi.co/json/',
-          parse: data => ({ city: data.city || '', country: data.country_name || '', isp: data.org || '' })
+          parse: async (r) => {
+            const data = await r.json();
+            if (data.error) throw new Error(data.reason || 'API Error');
+            return {
+              city: data.city || '',
+              country: data.country_name || '',
+              isp: data.org || ''
+            };
+          }
         },
         {
-          url: clientIP ? \`https://ip-api.com/json/\${clientIP}?fields=city,country,isp\` : 'https://ip-api.com/json/?fields=city,country,isp',
-          parse: data => ({ city: data.city || '', country: data.country || '', isp: data.isp || '' })
+          url: clientIP ? \`https://ip-api.com/json/\${clientIP}?fields=status,message,city,country,isp\` : 'https://ip-api.com/json/?fields=status,message,city,country,isp',
+          parse: async (r) => {
+            const data = await r.json();
+            if (data.status === 'fail') throw new Error(data.message || 'API Error');
+            return {
+              city: data.city || '',
+              country: data.country || '' ,
+              isp: data.isp || ''
+            };
+          }
         },
         {
           url: clientIP ? \`https://ipwho.is/\${clientIP}\` : 'https://ipwho.is/',
-          parse: data => ({ city: data.city || '', country: data.country || '', isp: data.connection?.isp || '' })
+          parse: async (r) => {
+            const data = await r.json();
+            if (!data.success) throw new Error('API Error');
+            return {
+              city: data.city || '',
+              country: data.country || ''
+            };
+          }
         }
       ];
 
       let clientGeo = null;
       for (const api of clientGeoAPIs) {
         try {
-          const data = await fetchWithTimeout(api.url);
-          if (data) {
-            clientGeo = api.parse(data);
-            if (clientGeo && (clientGeo.city || clientGeo.country)) {
-              const location = [clientGeo.city, clientGeo.country].filter(Boolean).join(', ') || 'Unknown';
-              displayElement('client-location', location, true);
-              displayElement('client-isp', clientGeo.isp || 'Unknown', true);
-              break;
-            }
+          const response = await fetchWithTimeout(api.url);
+          clientGeo = await api.parse(response);
+          if (clientGeo && (clientGeo.city || clientGeo.country)) {
+            const location = [clientGeo.city, clientGeo.country].filter(Boolean).join(', ') || 'Unknown';
+            displayElement('client-location', location, true);
+            displayElement('client-isp', clientGeo.isp || 'Unknown', true);
+            break;
           }
         } catch (error) {
           console.warn(\`Client Geo API failed (\${api.url}): \${error.message}\`);
@@ -2696,29 +2747,39 @@ async function handleUserPanel(request, userID, hostName, proxyAddress, userData
           {
             url: \`https://cloudflare-dns.com/dns-query?name=\${encodeURIComponent(proxyHost)}&type=A\`,
             headers: { 'accept': 'application/dns-json' },
-            parse: data => data.Answer?.find(a => a.type === 1)?.data
+            parse: async (r) => {
+              const data = await r.json();
+              const answer = data.Answer?.find(a => a.type === 1);
+              return answer?.data;
+            }
           },
           {
             url: \`https://dns.google/resolve?name=\${encodeURIComponent(proxyHost)}&type=A\`,
             headers: { 'accept': 'application/json' },
-            parse: data => data.Answer?.find(a => a.type === 1)?.data
+            parse: async (r) => {
+              const data = await r.json();
+              const answer = data.Answer?.find(a => a.type === 1);
+              return answer?.data;
+            }
           },
           {
             url: \`https://1.1.1.1/dns-query?name=\${encodeURIComponent(proxyHost)}&type=A\`,
             headers: { 'accept': 'application/dns-json' },
-            parse: data => data.Answer?.find(a => a.type === 1)?.data
+            parse: async (r) => {
+              const data = await r.json();
+              const answer = data.Answer?.find(a => a.type === 1);
+              return answer?.data;
+            }
           }
         ];
 
         for (const api of dnsAPIs) {
           try {
-            const data = await fetchWithTimeout(api.url);
-            if (data && data.Answer) {
-              const ip = api.parse(data);
-              if (ip && ipv4Regex.test(ip)) {
-                proxyIP = ip;
-                break;
-              }
+            const response = await fetchWithTimeout(api.url);
+            const resolvedIP = await api.parse(response);
+            if (resolvedIP && /^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$/.test(resolvedIP)) {
+              proxyIP = resolvedIP;
+              break;
             }
           } catch (error) {
             console.warn(\`DNS resolution failed (\${api.url}): \${error.message}\`);
@@ -2732,29 +2793,48 @@ async function handleUserPanel(request, userID, hostName, proxyAddress, userData
       const proxyGeoAPIs = [
         {
           url: \`https://ipapi.co/\${proxyIP}/json/\`,
-          parse: data => ({ city: data.city || '', country: data.country_name || '' })
+          parse: async (r) => {
+            const data = await r.json();
+            if (data.error) throw new Error(data.reason || 'API Error');
+            return {
+              city: data.city || '',
+              country: data.country_name || ''
+            };
+          }
         },
         {
-          url: \`https://ip-api.com/json/\${proxyIP}?fields=city,country\`,
-          parse: data => ({ city: data.city || '', country: data.country || '' })
+          url: \`https://ip-api.com/json/\${proxyIP}?fields=status,message,city,country\`,
+          parse: async (r) => {
+            const data = await r.json();
+            if (data.status === 'fail') throw new Error(data.message || 'API Error');
+            return {
+              city: data.city || '',
+              country: data.country || ''
+            };
+          }
         },
         {
           url: \`https://ipwho.is/\${proxyIP}\`,
-          parse: data => ({ city: data.city || '', country: data.country || '' })
+          parse: async (r) => {
+            const data = await r.json();
+            if (!data.success) throw new Error('API Error');
+            return {
+              city: data.city || '',
+              country: data.country || ''
+            };
+          }
         }
       ];
 
       let proxyGeo = null;
       for (const api of proxyGeoAPIs) {
         try {
-          const data = await fetchWithTimeout(api.url);
-          if (data) {
-            proxyGeo = api.parse(data);
-            if (proxyGeo && (proxyGeo.city || proxyGeo.country)) {
-              const location = [proxyGeo.city, proxyGeo.country].filter(Boolean).join(', ') || 'Unknown';
-              displayElement('proxy-location', location, true);
-              break;
-            }
+          const response = await fetchWithTimeout(api.url);
+          proxyGeo = await api.parse(response);
+          if (proxyGeo && (proxyGeo.city || proxyGeo.country)) {
+            const location = [proxyGeo.city, proxyGeo.country].filter(Boolean).join(', ') || 'Unknown';
+            displayElement('proxy-location', location, true);
+            break;
           }
         } catch (error) {
           console.warn(\`Proxy Geo API failed (\${api.url}): \${error.message}\`);
@@ -2854,7 +2934,7 @@ async function handleUserPanel(request, userID, hostName, proxyAddress, userData
           } else if (usagePercentage === 100) {
             usagePercentageDisplay = '100%';
           } else {
-            usagePercentageDisplay = `${usagePercentage.toFixed(2)}%`;
+            usagePercentageDisplay = usagePercentage.toFixed(2) + '%';
           }
 
           const progressFill = document.getElementById('progress-bar-fill');
@@ -2883,9 +2963,7 @@ async function handleUserPanel(request, userID, hostName, proxyAddress, userData
     }
 
     function startUserAutoRefresh() {
-      if (window.CONFIG.uuid) {
-        setInterval(refreshUserPanel, ${CONST.AUTO_REFRESH_INTERVAL});
-      }
+      setInterval(refreshUserPanel, ${CONST.AUTO_REFRESH_INTERVAL});
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -2943,9 +3021,9 @@ async function handleUserPanel(request, userID, hostName, proxyAddress, userData
         
         // Use server-injected geo data
         document.getElementById('proxy-ip').textContent = window.PROXY_IP || 'Detection failed';
-        document.getElementById('proxy-location').textContent = window.PROXY_GEO ? [window.PROXY_GEO.city, window.PROXY_GEO.country].filter(Boolean).join(', ') || 'Detection failed' : 'Detection failed';
+        document.getElementById('proxy-location').textContent = window.PROXY_GEO ? [window.PROXY_GEO.city, window.PROXY_GEO.country].filter(Boolean).join(', ') : 'Detection failed';
         document.getElementById('client-ip').textContent = window.CLIENT_IP || 'Detection failed';
-        document.getElementById('client-location').textContent = window.CLIENT_GEO ? [window.CLIENT_GEO.city, window.CLIENT_GEO.country].filter(Boolean).join(', ') || 'Detection failed' : 'Detection failed';
+        document.getElementById('client-location').textContent = window.CLIENT_GEO ? [window.CLIENT_GEO.city, window.CLIENT_GEO.country].filter(Boolean).join(', ') : 'Detection failed';
         document.getElementById('client-isp').textContent = window.CLIENT_GEO ? window.CLIENT_GEO.isp : 'Detection failed';
         
         // Remove detecting class
@@ -3047,7 +3125,7 @@ async function handleUserPanel(request, userID, hostName, proxyAddress, userData
 
             if (usageEl && data.usedMB && data.limitMB) {
                 const percentage = ((data.usedMB / data.limitMB) * 100).toFixed(1);
-                usageEl.textContent = await formatBytes(data.usedMB || 0);
+                usageEl.textContent = (await formatBytes(data.usedMB)) || '0 Bytes';
                 const usageStat = document.querySelector('.section-title span.muted');
                 if (usageStat) {
                     usageStat.textContent = percentage + '% Used';
@@ -3060,7 +3138,7 @@ async function handleUserPanel(request, userID, hostName, proxyAddress, userData
                 }
                 const usageText = document.querySelector('.progress-bar + p');
                 if (usageText) {
-                    usageText.textContent = (await formatBytes(data.usedMB || 0)) + ' of ' + (data.limitMB ? (await formatBytes(data.limitMB)) : 'Unlimited') + ' used';
+                    usageText.textContent = (await formatBytes(data.usedMB)) + ' of ' + (await formatBytes(data.limitMB)) + ' used';
                 }
             }
             if (timeEl && data.expires) {
@@ -3071,6 +3149,7 @@ async function handleUserPanel(request, userID, hostName, proxyAddress, userData
                 statusEl.textContent = data.status;
                 statusEl.parentElement.className = 'stat ' + (data.status === 'Expired' ? 'status-expired' : 'status-active');
             }
+            showToast('Data refreshed', 'success');
         }
 
         async function fetchData() {
@@ -3125,7 +3204,7 @@ async function handleUserPanel(request, userID, hostName, proxyAddress, userData
                 lastDataHash = newHash;
                 return data;
             } catch (error) {
-                console.error('Fetch error:', error);
+                console.warn('Fetch error:', error.message);
                 throw error;
             }
         }
@@ -3530,7 +3609,9 @@ async function HandleTCPOutBound(
     if (config.socks5Relay) {
       tcpSocket = await socks5Connect(addressType, address, port, log, config.parsedSocks5Address);
     } else {
-      tcpSocket = connect({ hostname: address, port: port });
+      tcpSocket = socks
+        ? await socks5Connect(addressType, address, port, log, config.parsedSocks5Address)
+        : connect({ hostname: address, port: port });
     }
     remoteSocket.value = tcpSocket;
     log(`connected to ${address}:${port}`);
@@ -3611,13 +3692,10 @@ async function RemoteSocketToWS(remoteSocket, webSocket, protocolResponseHeader,
           }
         },
         close() {
-          log('remoteSocket.readable closed', hasIncomingData);
+          log(`remoteSocket.readable closed, hasIncomingData: ${hasIncomingData}`);
         },
-        abort(err) {
-          console.error(
-            'remoteSocket.readable pipeTo error',
-            err,
-          );
+        abort(reason) {
+          console.error('remoteSocket.readable abort', reason);
         },
       }),
     )
@@ -3741,7 +3819,7 @@ function parseIPv6(ipv6) {
     const hextets = [...left, ...expansion, ...right];
     
     for (let i = 0; i < 8; i++) {
-        const val = parseInt(hextets[i], 16);
+        const val = parseInt(hextets[i] || '0', 16);
         view.setUint16(i * 2, val, false);
     }
     
@@ -3961,8 +4039,9 @@ export default {
     // Health Check Endpoint for Cron
     if (url.pathname === '/health-check' && request.method === 'GET') {
       await performHealthCheck(env, ctx);
-      const headers = new Headers
-            return new Response('Health check performed', { status: 200, headers });
+      const headers = new Headers();
+      addSecurityHeaders(headers, null, {});
+      return new Response('Health check performed', { status: 200, headers });
     }
 
     if (url.pathname.startsWith('/api/user/')) {
@@ -4165,7 +4244,7 @@ export default {
 
     // Masquerade: Show generic HTML if directly visited
     const masqueradeHtml = `
-      <!doctype html>
+      <!DOCTYPE html>
       <html>
       <head>
         <title>Welcome to nginx!</title>
